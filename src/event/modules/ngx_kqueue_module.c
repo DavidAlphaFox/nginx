@@ -139,12 +139,12 @@ ngx_kqueue_init(ngx_cycle_t *cycle, ngx_msec_t timer)
         }
 #endif
     }
-
+    //最大变化值小于配置值
     if (max_changes < kcf->changes) {
-        if (nchanges) {
+        if (nchanges) { //有changes
             ts.tv_sec = 0;
             ts.tv_nsec = 0;
-
+            //立即将changes放入kqueue
             if (kevent(ngx_kqueue, change_list, (int) nchanges, NULL, 0, &ts)
                 == -1)
             {
@@ -158,7 +158,7 @@ ngx_kqueue_init(ngx_cycle_t *cycle, ngx_msec_t timer)
         if (change_list) {
             ngx_free(change_list);
         }
-
+        //重新分配change_list的空间
         change_list = ngx_alloc(kcf->changes * sizeof(struct kevent),
                                 cycle->log);
         if (change_list == NULL) {
@@ -172,7 +172,7 @@ ngx_kqueue_init(ngx_cycle_t *cycle, ngx_msec_t timer)
         if (event_list) {
             ngx_free(event_list);
         }
-
+        //重新构建event_list
         event_list = ngx_alloc(kcf->events * sizeof(struct kevent), cycle->log);
         if (event_list == NULL) {
             return NGX_ERROR;
@@ -343,7 +343,7 @@ ngx_kqueue_del_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
 
     ev->active = 0;
     ev->disabled = 0;
-
+    //当前event在change列表中
     if (ev->index < nchanges
         && ((uintptr_t) change_list[ev->index].udata & (uintptr_t) ~1)
             == (uintptr_t) ev)
@@ -353,9 +353,9 @@ ngx_kqueue_del_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
                        ngx_event_ident(ev->data), event);
 
         /* if the event is still not passed to a kernel we will not pass it */
-
+        //删除一个事件
         nchanges--;
-
+        //index依然小于nchanges，交换nchanges和index中事件的位置
         if (ev->index < nchanges) {
             e = (ngx_event_t *)
                     ((uintptr_t) change_list[nchanges].udata & (uintptr_t) ~1);
@@ -371,11 +371,11 @@ ngx_kqueue_del_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
      * its filters so we do not need to delete explicitly the event
      * before the closing the file descriptor.
      */
-
+    //如果是关闭事件，kqueue会自动删除
     if (flags & NGX_CLOSE_EVENT) {
         return NGX_OK;
     }
-
+    //处理DISABLE，kqueue是支持屏蔽事件触发的
     if (flags & NGX_DISABLE_EVENT) {
         ev->disabled = 1;
 
@@ -401,7 +401,7 @@ ngx_kqueue_set_event(ngx_event_t *ev, ngx_int_t filter, ngx_uint_t flags)
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, ev->log, 0,
                    "kevent set event: %d: ft:%i fl:%04Xi",
                    c->fd, filter, flags);
-
+    //已经达到最大的变化更新值了，立刻进行变化更新
     if (nchanges >= max_changes) {
         ngx_log_error(NGX_LOG_WARN, ev->log, 0,
                       "kqueue change list is filled up");
@@ -418,21 +418,21 @@ ngx_kqueue_set_event(ngx_event_t *ev, ngx_int_t filter, ngx_uint_t flags)
 
         nchanges = 0;
     }
-
+    //获取事件
     kev = &change_list[nchanges];
-
+    //将链接的句柄，设置为标识
     kev->ident = c->fd;
-    kev->filter = (short) filter;
-    kev->flags = (u_short) flags;
-    kev->udata = NGX_KQUEUE_UDATA_T ((uintptr_t) ev | ev->instance);
-
+    kev->filter = (short) filter; //过滤事件
+    kev->flags = (u_short) flags; //操作方法
+    kev->udata = NGX_KQUEUE_UDATA_T ((uintptr_t) ev | ev->instance); //把事件作为用户数据
+    //对EVFILT_VNODE 进行fflags设置，对于flags可以进行额外的设置
     if (filter == EVFILT_VNODE) {
         kev->fflags = NOTE_DELETE|NOTE_WRITE|NOTE_EXTEND
                                  |NOTE_ATTRIB|NOTE_RENAME
 #if (__FreeBSD__ == 4 && __FreeBSD_version >= 430000) \
     || __FreeBSD_version >= 500018
                                  |NOTE_REVOKE
-#endif
+#endif //freebsd 4.3及freebsd 5以上，添加NOTE_REVOKE过滤，因为revoke调用最早出现在4.3BSD中
                       ;
         kev->data = 0;
 
@@ -454,7 +454,7 @@ ngx_kqueue_set_event(ngx_event_t *ev, ngx_int_t filter, ngx_uint_t flags)
 
     ev->index = nchanges;
     nchanges++;
-
+    //如果没有flush_event是不会立刻执行changelist
     if (flags & NGX_FLUSH_EVENT) {
         ts.tv_sec = 0;
         ts.tv_nsec = 0;
@@ -532,7 +532,7 @@ ngx_kqueue_process_events(ngx_cycle_t *cycle, ngx_msec_t timer,
 
     ngx_log_debug2(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
                    "kevent timer: %M, changes: %d", timer, n);
-
+    //每次处理事件的时候，都会更新change_list
     events = kevent(ngx_kqueue, change_list, n, event_list, (int) nevents, tp);
 
     err = (events == -1) ? ngx_errno : 0;
@@ -622,7 +622,7 @@ ngx_kqueue_process_events(ngx_cycle_t *cycle, ngx_msec_t timer,
             if (ev->oneshot) {
                 ev->active = 0;
             }
-
+            //数据量
             ev->available = event_list[i].data;
 
             if (event_list[i].flags & EV_EOF) {

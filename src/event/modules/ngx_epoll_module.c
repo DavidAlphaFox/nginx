@@ -587,12 +587,13 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
     c = ev->data;
 
     events = (uint32_t) event;
-
+    //读事件
     if (event == NGX_READ_EVENT) {
         e = c->write;
         prev = EPOLLOUT;
 #if (NGX_READ_EVENT != EPOLLIN|EPOLLRDHUP)
         events = EPOLLIN|EPOLLRDHUP;
+//EPOLLRDHUP是当对方关闭（close）连接或者关闭写（shutdown (SHUT_WR)）时，本事件就会被触发
 #endif
 
     } else {
@@ -602,13 +603,13 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
         events = EPOLLOUT;
 #endif
     }
-
+    //如果事件是被激活了
     if (e->active) {
         op = EPOLL_CTL_MOD;
-        events |= prev;
+        events |= prev; //合并之前的事件
 
     } else {
-        op = EPOLL_CTL_ADD;
+        op = EPOLL_CTL_ADD; //全新添加的
     }
 
 #if (NGX_HAVE_EPOLLEXCLUSIVE && NGX_HAVE_EPOLLRDHUP)
@@ -618,7 +619,7 @@ ngx_epoll_add_event(ngx_event_t *ev, ngx_int_t event, ngx_uint_t flags)
 #endif
 
     ee.events = events | (uint32_t) flags;
-    ee.data.ptr = (void *) ((uintptr_t) c | ev->instance);
+    ee.data.ptr = (void *) ((uintptr_t) c | ev->instance); //对指针最后一位进行设置
 
     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, ev->log, 0,
                    "epoll add event: fd:%d op:%d ev:%08XD",
@@ -836,10 +837,10 @@ ngx_epoll_process_events(ngx_cycle_t *cycle, ngx_msec_t timer, ngx_uint_t flags)
     for (i = 0; i < events; i++) {
         c = event_list[i].data.ptr;
 
-        instance = (uintptr_t) c & 1;
-        c = (ngx_connection_t *) ((uintptr_t) c & (uintptr_t) ~1);
+        instance = (uintptr_t) c & 1; //取最后一位
+        c = (ngx_connection_t *) ((uintptr_t) c & (uintptr_t) ~1); //取链接的指针
 
-        rev = c->read;
+        rev = c->read; //得到读事件
 
         if (c->fd == -1 || rev->instance != instance) {
 
@@ -852,7 +853,7 @@ ngx_epoll_process_events(ngx_cycle_t *cycle, ngx_msec_t timer, ngx_uint_t flags)
                            "epoll: stale event %p", c);
             continue;
         }
-
+        //发生的事件
         revents = event_list[i].events;
 
         ngx_log_debug3(NGX_LOG_DEBUG_EVENT, cycle->log, 0,
@@ -884,7 +885,7 @@ ngx_epoll_process_events(ngx_cycle_t *cycle, ngx_msec_t timer, ngx_uint_t flags)
 
 #if (NGX_HAVE_EPOLLRDHUP)
             if (revents & EPOLLRDHUP) {
-                rev->pending_eof = 1;
+                rev->pending_eof = 1; //EPOLLRDHUP发生了，就等待EOF
             }
 #endif
 
